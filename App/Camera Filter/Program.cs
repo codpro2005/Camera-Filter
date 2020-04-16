@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using Accord.Video.FFMPEG;
 
 namespace Camera_Filter
@@ -9,19 +10,48 @@ namespace Camera_Filter
 	{
 		private static void Main(string[] args)
 		{
-			using (var videoFileReader = new VideoFileReader())
+			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
+			const string mediaOutputPath = @"D:\VideoTest\blacky-baldy.jpg";
+			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.BlackWhite;
+			const object[] additionalParams = null;
+
+			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
-				videoFileReader.Open(@"D:\VideoTest\test_Trim.mp4");
-				var rational = videoFileReader.FrameRate;
+				using (var ms = new MemoryStream(File.ReadAllBytes(mediaInputPath)))
+				{
+					action(ms);
+				}
+			}
+			var mediaIsImage = true;
+			try
+			{
+				MediaInputPathToMemoryStreamAction(ms => new Bitmap(ms));
+			}
+			catch
+			{
+				mediaIsImage = false;
+			}
+			if (mediaIsImage)
+			{
+				MediaInputPathToMemoryStreamAction(ms => ImageService.Filter(imageFilterTechnique, new Bitmap(ms), additionalParams).Save(mediaOutputPath));
+			}
+			else
+			{
+				Accord.Math.Rational rational;
+				var originalBitmaps = new List<Bitmap>();
+				using (var videoFileReader = new VideoFileReader())
+				{
+					videoFileReader.Open(mediaInputPath);
+					rational = videoFileReader.FrameRate;
+					for (var frameIndex = 0; frameIndex < videoFileReader.FrameCount; frameIndex++)
+					{
+						originalBitmaps.Add(videoFileReader.ReadVideoFrame());
+					}
+					videoFileReader.Close();
+				}
+				var firstBitmap = originalBitmaps[0];
 				var width = 0;
 				var height = 0;
-				var originalBitmaps = new List<Bitmap>();
-				for (var frameIndex = 0; frameIndex < videoFileReader.FrameCount; frameIndex++)
-				{
-					originalBitmaps.Add(videoFileReader.ReadVideoFrame());
-				}
-				videoFileReader.Close();
-				var firstBitmap = originalBitmaps[0];
 				if (firstBitmap != null)
 				{
 					width = firstBitmap.Width;
@@ -29,41 +59,63 @@ namespace Camera_Filter
 				}
 				using (var videoFileWriter = new VideoFileWriter())
 				{
-					videoFileWriter.Open(@"D:\VideoTest\test_Trim_output.mp4", width, height, rational, VideoCodec.H264);
-					VideoFilter.FilterImageSequence(originalBitmaps, ImageFilter.FilterBlackWhite).ForEach(editedFrame => videoFileWriter.WriteVideoFrame(editedFrame));
+					videoFileWriter.Open(mediaOutputPath, width, height, rational, VideoCodec.H264);
+					VideoService.FilterImageSequence(imageFilterTechnique, originalBitmaps, additionalParams).ForEach(videoFileWriter.WriteVideoFrame);
+					videoFileWriter.Close();
 				}
 			}
 		}
 	}
 
-	internal static class VideoFilter
+	internal static class VideoService
 	{
-		public static List<Bitmap> FilterImageSequence(List<Bitmap> originalBitmaps, Func<Bitmap, object[], Bitmap> bitmapFilterAction, params object[] additionalParams)
+		public static List<Bitmap> FilterImageSequence(ImageFilterTechnique imageFilterTechnique, List<Bitmap> originalBitmaps, object[] additionalParams)
 		{
 			var editedBitmaps = new List<Bitmap>();
-			originalBitmaps.ForEach(originalBitmap =>
-			{
-				editedBitmaps.Add(bitmapFilterAction(originalBitmap, additionalParams));
-			});
+			originalBitmaps.ForEach(originalBitmap => editedBitmaps.Add(ImageService.Filter(imageFilterTechnique, originalBitmap, additionalParams)));
 			return editedBitmaps;
 		}
 	}
 
-	internal static class ImageFilter
+	internal static class ImageService
 	{
-		public static Bitmap FilterBlackWhite(Bitmap originalBitmap, params object[] additionalParams)
+		public static Bitmap Filter(ImageFilterTechnique imageFilterTechnique, Bitmap originalBitmap, object[] additionalParams)
 		{
-			var editedFrame = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+			Bitmap ExecuteFilter(Func<Bitmap, object[], Bitmap> filterAction) => filterAction(originalBitmap, additionalParams);
+			switch (imageFilterTechnique)
+			{
+				case ImageFilterTechnique.BlackWhite:
+					return ExecuteFilter(BlackWhite);
+				case ImageFilterTechnique.Disorted:
+					return ExecuteFilter(Disorted);
+				default:
+					throw new ArgumentOutOfRangeException(nameof(imageFilterTechnique), imageFilterTechnique, null);
+			}
+		}
+		private static Bitmap BlackWhite(Bitmap originalBitmap, object[] additionalParams)
+		{
+			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					var brightnessColor = (int)(originalBitmap.GetPixel(x, y).GetBrightness() * 255); // shortcut for (pixel.R + pixel.B + pixel.G) / 3 + slightly more refined for human eye
-					editedFrame.SetPixel(x, y, Color.FromArgb(brightnessColor, brightnessColor, brightnessColor));
+					var brightnessColor = (int)(originalBitmap.GetPixel(x, y).GetBrightness() * 255); // shortcut for (pixel.R + pixel.G + pixel.B) / 3 + slightly more refined for human eye
+					editedBitmap.SetPixel(x, y, Color.FromArgb(brightnessColor, brightnessColor, brightnessColor));
 				}
 			}
 
-			return editedFrame;
+			return editedBitmap;
 		}
+
+		private static Bitmap Disorted(Bitmap originalBitmap, object[] additionalParams)
+		{
+			return new Bitmap(0, 0);
+		}
+	}
+
+	public enum ImageFilterTechnique
+	{
+		BlackWhite,
+		Disorted
 	}
 }
