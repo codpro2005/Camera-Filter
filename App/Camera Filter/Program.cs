@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using Accord.Video.FFMPEG;
 
 namespace Camera_Filter
@@ -10,10 +11,10 @@ namespace Camera_Filter
 	{
 		private static void Main(string[] args)
 		{
-			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
-			const string mediaOutputPath = @"D:\VideoTest\blacky-baldy.jpg";
-			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.BlackWhite;
-			const object[] additionalParams = null;
+			const string mediaInputPath = @"D:\VideoTest\creeper.jpg";
+			const string mediaOutputPath = @"D:\VideoTest\creeper-pixified-400.jpg";
+			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Pixify;
+			var additionalParams = new object[] {100};
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -50,13 +51,8 @@ namespace Camera_Filter
 					videoFileReader.Close();
 				}
 				var firstBitmap = originalBitmaps[0];
-				var width = 0;
-				var height = 0;
-				if (firstBitmap != null)
-				{
-					width = firstBitmap.Width;
-					height = firstBitmap.Height;
-				}
+				var width = firstBitmap.Width;
+				var height = firstBitmap.Height;
 				using (var videoFileWriter = new VideoFileWriter())
 				{
 					videoFileWriter.Open(mediaOutputPath, width, height, rational, VideoCodec.H264);
@@ -86,8 +82,8 @@ namespace Camera_Filter
 			{
 				case ImageFilterTechnique.BlackWhite:
 					return ExecuteFilter(BlackWhite);
-				case ImageFilterTechnique.Disorted:
-					return ExecuteFilter(Disorted);
+				case ImageFilterTechnique.Pixify:
+					return ExecuteFilter(Pixify);
 				default:
 					throw new ArgumentOutOfRangeException(nameof(imageFilterTechnique), imageFilterTechnique, null);
 			}
@@ -103,19 +99,60 @@ namespace Camera_Filter
 					editedBitmap.SetPixel(x, y, Color.FromArgb(brightnessColor, brightnessColor, brightnessColor));
 				}
 			}
-
 			return editedBitmap;
 		}
 
-		private static Bitmap Disorted(Bitmap originalBitmap, object[] additionalParams)
+		private static Bitmap Pixify(Bitmap originalBitmap, object[] additionalParams)
 		{
-			return new Bitmap(0, 0);
+			var amountOfPixels = (int) additionalParams[0];
+			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+			var pixelGroups = new Dictionary<int[], List<Color>>();
+			var pixelGroupsIndexes = new List<int[]>();
+			for (var y = 0; y < originalBitmap.Height; y++)
+			{
+				for (var x = 0; x < originalBitmap.Width; x++)
+				{
+					var xGroupIndex = x / amountOfPixels;
+					var yGroupIndex = y / amountOfPixels;
+					int[] currentPixelGroupsIndex = null;
+					if (x % amountOfPixels == 0 && y % amountOfPixels == 0)
+					{
+						currentPixelGroupsIndex = new[] {xGroupIndex, yGroupIndex};
+						pixelGroups.Add(currentPixelGroupsIndex, new List<Color>());
+						pixelGroupsIndexes.Add(currentPixelGroupsIndex);
+					}
+					pixelGroups[currentPixelGroupsIndex ?? pixelGroupsIndexes.Find(pixelGroupsIndex => pixelGroupsIndex[0] == xGroupIndex && pixelGroupsIndex[1] == yGroupIndex)].Add(originalBitmap.GetPixel(x, y));
+				}
+			}
+			var pixelGroupsEvaluated = new Dictionary<int[], Color>();
+			foreach (var pixelGroup in pixelGroups)
+			{
+				var r = 0;
+				var g = 0;
+				var b = 0;
+				pixelGroup.Value.ForEach(pixel =>
+				{
+					r += pixel.R;
+					g += pixel.G;
+					b += pixel.B;
+				});
+				var devider = pixelGroup.Value.Count;
+				pixelGroupsEvaluated.Add(pixelGroup.Key, Color.FromArgb(r / devider, g / devider, b / devider));
+			}
+			for (var y = 0; y < originalBitmap.Height; y++)
+			{
+				for (var x = 0; x < originalBitmap.Width; x++)
+				{
+					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[pixelGroupsIndexes.Find(pixelGroupsIndex => pixelGroupsIndex[0] == x / amountOfPixels && pixelGroupsIndex[1] == y / amountOfPixels)]);
+				}
+			}
+			return editedBitmap;
 		}
 	}
 
 	public enum ImageFilterTechnique
 	{
 		BlackWhite,
-		Disorted
+		Pixify
 	}
 }
