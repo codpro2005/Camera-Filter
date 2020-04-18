@@ -11,10 +11,10 @@ namespace Camera_Filter
 	{
 		private static void Main(string[] args)
 		{
-			const string mediaInputPath = @"D:\VideoTest\creeper.jpg";
-			const string mediaOutputPath = @"D:\VideoTest\creeper-pixified-400.jpg";
+			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
+			const string mediaOutputPath = @"D:\VideoTest\pixified-baldy-reworked.jpg";
 			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Pixify;
-			var additionalParams = new object[] {100};
+			var additionalParams = new object[] {10};
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -106,25 +106,20 @@ namespace Camera_Filter
 		{
 			var amountOfPixels = (int) additionalParams[0];
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
-			var pixelGroups = new Dictionary<int[], List<Color>>();
-			var pixelGroupsIndexes = new List<int[]>();
+			var pixelGroups = new Dictionary<Matrix, List<Color>>();
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					var xGroupIndex = x / amountOfPixels;
-					var yGroupIndex = y / amountOfPixels;
-					int[] currentPixelGroupsIndex = null;
+					var pixelGroupsIndex = new Matrix(x / amountOfPixels, y / amountOfPixels);
 					if (x % amountOfPixels == 0 && y % amountOfPixels == 0)
 					{
-						currentPixelGroupsIndex = new[] {xGroupIndex, yGroupIndex};
-						pixelGroups.Add(currentPixelGroupsIndex, new List<Color>());
-						pixelGroupsIndexes.Add(currentPixelGroupsIndex);
+						pixelGroups.Add(pixelGroupsIndex, new List<Color>());
 					}
-					pixelGroups[currentPixelGroupsIndex ?? pixelGroupsIndexes.Find(pixelGroupsIndex => pixelGroupsIndex[0] == xGroupIndex && pixelGroupsIndex[1] == yGroupIndex)].Add(originalBitmap.GetPixel(x, y));
+					pixelGroups[pixelGroupsIndex].Add(originalBitmap.GetPixel(x, y));
 				}
 			}
-			var pixelGroupsEvaluated = new Dictionary<int[], Color>();
+			var pixelGroupsEvaluated = new Dictionary<Matrix, Color>();
 			foreach (var pixelGroup in pixelGroups)
 			{
 				var r = 0;
@@ -143,14 +138,26 @@ namespace Camera_Filter
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[pixelGroupsIndexes.Find(pixelGroupsIndex => pixelGroupsIndex[0] == x / amountOfPixels && pixelGroupsIndex[1] == y / amountOfPixels)]);
+					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[new Matrix(x / amountOfPixels, y / amountOfPixels)]);
 				}
 			}
 			return editedBitmap;
 		}
 	}
 
-	public enum ImageFilterTechnique
+	internal struct Matrix
+	{
+		public int X { get; set; }
+		public int Y { get; set; }
+
+		public Matrix(int x, int y)
+		{
+			this.X = x;
+			this.Y = y;
+		}
+	}
+
+	internal enum ImageFilterTechnique
 	{
 		BlackWhite,
 		Pixify
