@@ -12,9 +12,9 @@ namespace Camera_Filter
 		private static void Main(string[] args)
 		{
 			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
-			const string mediaOutputPath = @"D:\VideoTest\pixified-baldy-reworked.jpg";
-			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Pixify;
-			var additionalParams = new object[] {10};
+			const string mediaOutputPath = @"D:\VideoTest\own-baldy.jpg";
+			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Own;
+			var additionalParams = new object[] {(Func<Bitmap, Bitmap>) (originalBitmap => originalBitmap)};
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -84,6 +84,8 @@ namespace Camera_Filter
 					return ExecuteFilter(BlackWhite);
 				case ImageFilterTechnique.Pixify:
 					return ExecuteFilter(Pixify);
+				case ImageFilterTechnique.Own:
+					return ExecuteFilter(Own);
 				default:
 					throw new ArgumentOutOfRangeException(nameof(imageFilterTechnique), imageFilterTechnique, null);
 			}
@@ -105,7 +107,6 @@ namespace Camera_Filter
 		private static Bitmap Pixify(Bitmap originalBitmap, object[] additionalParams)
 		{
 			var amountOfPixels = (int) additionalParams[0];
-			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
 			var pixelGroups = new Dictionary<Matrix, List<Color>>();
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
@@ -134,14 +135,21 @@ namespace Camera_Filter
 				var devider = pixelGroup.Value.Count;
 				pixelGroupsEvaluated.Add(pixelGroup.Key, Color.FromArgb(r / devider, g / devider, b / devider));
 			}
-			for (var y = 0; y < originalBitmap.Height; y++)
+			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+			for (var y = 0; y < editedBitmap.Height; y++)
 			{
-				for (var x = 0; x < originalBitmap.Width; x++)
+				for (var x = 0; x < editedBitmap.Width; x++)
 				{
 					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[new Matrix(x / amountOfPixels, y / amountOfPixels)]);
 				}
 			}
 			return editedBitmap;
+		}
+
+		private static Bitmap Own(Bitmap orginalBitmap, IReadOnlyList<object> additionalParams)
+		{
+			var ownFilter = (Func<Bitmap, Bitmap>)additionalParams[0];
+			return ownFilter(orginalBitmap);
 		}
 	}
 
@@ -160,6 +168,7 @@ namespace Camera_Filter
 	internal enum ImageFilterTechnique
 	{
 		BlackWhite,
-		Pixify
+		Pixify,
+		Own
 	}
 }
