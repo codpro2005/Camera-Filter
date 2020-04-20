@@ -10,10 +10,10 @@ namespace Camera_Filter
 	{
 		private static void Main(string[] args)
 		{
-			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
-			const string mediaOutputPath = @"D:\VideoTest\pixify-baldy.jpg";
+			const string mediaInputPath = @"D:\VideoTest\sick-longshot.mp4";
+			const string mediaOutputPath = @"D:\VideoTest\sick-minecraft-longshot.mp4";
 			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Pixify;
-			var additionalParams = new object[] { 40 };
+			var additionalParams = new object[] { 20 };
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -99,8 +99,9 @@ namespace Camera_Filter
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					var brightnessColor = (int)(originalBitmap.GetPixel(x, y).GetBrightness() * byte.MaxValue); // shortcut for (pixel.R + pixel.G + pixel.B) / 3 + slightly more refined for human eye
-					editedBitmap.SetPixel(x, y, Color.FromArgb(brightnessColor, brightnessColor, brightnessColor));
+					var originalPixel = originalBitmap.GetPixel(x, y);
+					var brightnessColor = (byte)(originalPixel.GetBrightness() * byte.MaxValue); // shortcut for (pixel.R + pixel.G + pixel.B) / 3 + slightly more refined for human eye
+					editedBitmap.SetPixel(x, y, originalPixel.ForEachChannelRgb(channel => brightnessColor));
 				}
 			}
 			return editedBitmap;
@@ -144,11 +145,12 @@ namespace Camera_Filter
 		{
 			var brightnessStrength = (float)additionalParams[0];
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+			var brightenerFunction = brightnessStrength >= 0 ? (Func<byte, byte>)(channel => (byte)(channel + (byte.MaxValue - channel) * brightnessStrength)) : (channel => (byte)(channel * (1 + brightnessStrength)));
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					editedBitmap.SetPixel(x, y, originalBitmap.GetPixel(x, y).ForEachChannelRgb(channel => (byte)(brightnessStrength >= 0 ? channel + (byte.MaxValue - channel) * brightnessStrength : channel * (1 + brightnessStrength))));
+					editedBitmap.SetPixel(x, y, originalBitmap.GetPixel(x, y).ForEachChannelRgb(brightenerFunction));
 				}
 			}
 			return editedBitmap;
