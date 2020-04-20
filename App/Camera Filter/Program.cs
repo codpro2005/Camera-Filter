@@ -10,10 +10,9 @@ namespace Camera_Filter
 	{
 		private static void Main(string[] args)
 		{
-			const string mediaInputPath = @"D:\VideoTest\sick-longshot.mp4";
-			const string mediaOutputPath = @"D:\VideoTest\sick-minecraft-longshot.mp4";
-			const ImageFilterTechnique imageFilterTechnique = ImageFilterTechnique.Pixify;
-			var additionalParams = new object[] { 20 };
+			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
+			const string mediaOutputPath = @"D:\VideoTest\baldy-pixify-20.jpg";
+			var imageFilter = ImageFilter.Pixify(20);
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -33,7 +32,7 @@ namespace Camera_Filter
 			}
 			if (mediaIsImage)
 			{
-				MediaInputPathToMemoryStreamAction(ms => ImageService.Filter(imageFilterTechnique, new Bitmap(ms), additionalParams).Save(mediaOutputPath));
+				MediaInputPathToMemoryStreamAction(ms => ImageService.Filter(new Bitmap(ms), imageFilter).Save(mediaOutputPath));
 			}
 			else
 			{
@@ -55,7 +54,7 @@ namespace Camera_Filter
 				using (var videoFileWriter = new VideoFileWriter())
 				{
 					videoFileWriter.Open(mediaOutputPath, width, height, rational, VideoCodec.H264);
-					VideoService.FilterImageSequence(imageFilterTechnique, originalBitmaps, additionalParams).ForEach(videoFileWriter.WriteVideoFrame);
+					VideoService.FilterImageSequence(originalBitmaps, imageFilter).ForEach(videoFileWriter.WriteVideoFrame);
 					videoFileWriter.Close();
 				}
 			}
@@ -64,19 +63,20 @@ namespace Camera_Filter
 
 	internal static class VideoService
 	{
-		public static List<Bitmap> FilterImageSequence(ImageFilterTechnique imageFilterTechnique, List<Bitmap> originalBitmaps, object[] additionalParams)
+		public static List<Bitmap> FilterImageSequence(List<Bitmap> originalBitmaps, ImageFilter imageFilter)
 		{
 			var editedBitmaps = new List<Bitmap>();
-			originalBitmaps.ForEach(originalBitmap => editedBitmaps.Add(ImageService.Filter(imageFilterTechnique, originalBitmap, additionalParams)));
+			originalBitmaps.ForEach(originalBitmap => editedBitmaps.Add(ImageService.Filter(originalBitmap, imageFilter)));
 			return editedBitmaps;
 		}
 	}
 
 	internal static class ImageService
 	{
-		public static Bitmap Filter(ImageFilterTechnique imageFilterTechnique, Bitmap originalBitmap, object[] additionalParams)
+		public static Bitmap Filter(Bitmap originalBitmap, ImageFilter imageFilter)
 		{
-			Bitmap ExecuteFilter(Func<Bitmap, object[], Bitmap> filterAction) => filterAction(originalBitmap, additionalParams);
+			Bitmap ExecuteFilter(Func<Bitmap, ImageFilter, Bitmap> filterAction) => filterAction(originalBitmap, imageFilter);
+			var imageFilterTechnique = imageFilter.Technique;
 			switch (imageFilterTechnique)
 			{
 				case ImageFilterTechnique.BlackWhite:
@@ -92,7 +92,7 @@ namespace Camera_Filter
 			}
 		}
 
-		private static Bitmap BlackWhite(Bitmap originalBitmap, object[] additionalParams)
+		private static Bitmap BlackWhite(Bitmap originalBitmap, ImageFilter imageFilter)
 		{
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
 			for (var y = 0; y < originalBitmap.Height; y++)
@@ -107,9 +107,9 @@ namespace Camera_Filter
 			return editedBitmap;
 		}
 
-		private static Bitmap Pixify(Bitmap originalBitmap, object[] additionalParams)
+		private static Bitmap Pixify(Bitmap originalBitmap, ImageFilter imageFilter)
 		{
-			var amountOfPixels = (int)additionalParams[0];
+			var amountOfPixels = imageFilter.AmountOfPixels;
 			var pixelGroups = new Dictionary<Matrix, List<Color>>();
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
@@ -141,9 +141,9 @@ namespace Camera_Filter
 			return editedBitmap;
 		}
 
-		private static Bitmap Brightener(Bitmap originalBitmap, object[] additionalParams)
+		private static Bitmap Brightener(Bitmap originalBitmap, ImageFilter imageFilter)
 		{
-			var brightnessStrength = (float)additionalParams[0];
+			var brightnessStrength = imageFilter.BrightnessStrength;
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
 			var brightenerFunction = brightnessStrength >= 0 ? (Func<byte, byte>)(channel => (byte)(channel + (byte.MaxValue - channel) * brightnessStrength)) : (channel => (byte)(channel * (1 + brightnessStrength)));
 			for (var y = 0; y < originalBitmap.Height; y++)
@@ -156,11 +156,56 @@ namespace Camera_Filter
 			return editedBitmap;
 		}
 
-		private static Bitmap Custom(Bitmap orginalBitmap, IReadOnlyList<object> additionalParams)
+		private static Bitmap Custom(Bitmap orginalBitmap, ImageFilter imageFilter)
 		{
-			var ownFilter = (Func<Bitmap, Bitmap>)additionalParams[0];
-			return ownFilter(orginalBitmap);
+			return imageFilter.OwnFilter(orginalBitmap);
 		}
+	}
+
+	internal class ImageFilter
+	{
+		public ImageFilterTechnique Technique { get; }
+		public int AmountOfPixels { get; private set; }
+		public float BrightnessStrength { get; private set; }
+		public Func<Bitmap, Bitmap> OwnFilter { get; private set; }
+
+		private ImageFilter()
+		{
+
+		}
+
+		private ImageFilter(ImageFilterTechnique technique)
+		{
+			this.Technique = technique;
+		}
+
+		public static ImageFilter BlackWhite()
+		{
+			return new ImageFilter(ImageFilterTechnique.BlackWhite);
+		}
+
+		public static ImageFilter Pixify(int amountOfPixels)
+		{
+			return new ImageFilter(ImageFilterTechnique.Pixify) { AmountOfPixels = amountOfPixels };
+		}
+
+		public static ImageFilter Brightener(float brightenessStength)
+		{
+			return new ImageFilter(ImageFilterTechnique.Brightener) { BrightnessStrength = brightenessStength };
+		}
+
+		public static ImageFilter Custom(Func<Bitmap, Bitmap> ownFilter)
+		{
+			return new ImageFilter(ImageFilterTechnique.Custom) { OwnFilter = ownFilter };
+		}
+	}
+
+	internal enum ImageFilterTechnique
+	{
+		BlackWhite,
+		Pixify,
+		Brightener,
+		Custom
 	}
 
 	internal static class ColorExtensions
@@ -269,13 +314,5 @@ namespace Camera_Filter
 			this.X = x;
 			this.Y = y;
 		}
-	}
-
-	internal enum ImageFilterTechnique
-	{
-		BlackWhite,
-		Pixify,
-		Brightener,
-		Custom
 	}
 }
