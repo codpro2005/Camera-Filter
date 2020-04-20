@@ -91,6 +91,7 @@ namespace Camera_Filter
 					throw new ArgumentOutOfRangeException(nameof(imageFilterTechnique), imageFilterTechnique, null);
 			}
 		}
+
 		private static Bitmap BlackWhite(Bitmap originalBitmap, object[] additionalParams)
 		{
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
@@ -100,20 +101,6 @@ namespace Camera_Filter
 				{
 					var brightnessColor = (int)(originalBitmap.GetPixel(x, y).GetBrightness() * byte.MaxValue); // shortcut for (pixel.R + pixel.G + pixel.B) / 3 + slightly more refined for human eye
 					editedBitmap.SetPixel(x, y, Color.FromArgb(brightnessColor, brightnessColor, brightnessColor));
-				}
-			}
-			return editedBitmap;
-		}
-
-		private static Bitmap Brightener(Bitmap originalBitmap, object[] additionalParams)
-		{
-			var brightnessStrength = (float)additionalParams[0];
-			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
-			for (var y = 0; y < originalBitmap.Height; y++)
-			{
-				for (var x = 0; x < originalBitmap.Width; x++)
-				{
-					editedBitmap.SetPixel(x, y, originalBitmap.GetPixel(x, y).ForEachChannelRgb(channel => (byte)(brightnessStrength >= 0 ? channel + (byte.MaxValue - channel) * brightnessStrength : channel * (1 + brightnessStrength))));
 				}
 			}
 			return editedBitmap;
@@ -148,6 +135,20 @@ namespace Camera_Filter
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
 					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[new Matrix(x / amountOfPixels, y / amountOfPixels)]);
+				}
+			}
+			return editedBitmap;
+		}
+
+		private static Bitmap Brightener(Bitmap originalBitmap, object[] additionalParams)
+		{
+			var brightnessStrength = (float)additionalParams[0];
+			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
+			for (var y = 0; y < originalBitmap.Height; y++)
+			{
+				for (var x = 0; x < originalBitmap.Width; x++)
+				{
+					editedBitmap.SetPixel(x, y, originalBitmap.GetPixel(x, y).ForEachChannelRgb(channel => (byte)(brightnessStrength >= 0 ? channel + (byte.MaxValue - channel) * brightnessStrength : channel * (1 + brightnessStrength))));
 				}
 			}
 			return editedBitmap;
