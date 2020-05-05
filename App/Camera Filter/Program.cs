@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using Accord.Video.FFMPEG;
 
 namespace Camera_Filter
@@ -12,7 +13,7 @@ namespace Camera_Filter
 		{
 			const string mediaInputPath = @"D:\VideoTest\baldy.jpg";
 			const string mediaOutputPath = @"D:\VideoTest\baldy-pixify-20.jpg";
-			var imageFilter = ImageFilter.Pixify(20);
+			var imageFilter = new Pixify(20);
 
 			void MediaInputPathToMemoryStreamAction(Action<MemoryStream> action)
 			{
@@ -32,7 +33,7 @@ namespace Camera_Filter
 			}
 			if (mediaIsImage)
 			{
-				MediaInputPathToMemoryStreamAction(ms => ImageService.Filter(new Bitmap(ms), imageFilter).Save(mediaOutputPath));
+				MediaInputPathToMemoryStreamAction(ms => imageFilter.Filter(new Bitmap(ms)).Save(mediaOutputPath));
 			}
 			else
 			{
@@ -65,34 +66,23 @@ namespace Camera_Filter
 	{
 		public static List<Bitmap> FilterImageSequence(List<Bitmap> originalBitmaps, ImageFilter imageFilter)
 		{
-			var editedBitmaps = new List<Bitmap>();
-			originalBitmaps.ForEach(originalBitmap => editedBitmaps.Add(ImageService.Filter(originalBitmap, imageFilter)));
-			return editedBitmaps;
+			return originalBitmaps.Select(imageFilter.Filter).ToList();
 		}
 	}
 
-	internal static class ImageService
+	internal abstract class ImageFilter
 	{
-		public static Bitmap Filter(Bitmap originalBitmap, ImageFilter imageFilter)
+		public abstract Bitmap Filter(Bitmap originalBitmap);
+	}
+
+	internal class BlackWhite : ImageFilter
+	{
+		public BlackWhite()
 		{
-			Bitmap ExecuteFilter(Func<Bitmap, ImageFilter, Bitmap> filterAction) => filterAction(originalBitmap, imageFilter);
-			var imageFilterTechnique = imageFilter.Technique;
-			switch (imageFilterTechnique)
-			{
-				case ImageFilterTechnique.BlackWhite:
-					return ExecuteFilter(BlackWhite);
-				case ImageFilterTechnique.Pixify:
-					return ExecuteFilter(Pixify);
-				case ImageFilterTechnique.Brightener:
-					return ExecuteFilter(Brightener);
-				case ImageFilterTechnique.Custom:
-					return ExecuteFilter(Custom);
-				default:
-					throw new ArgumentOutOfRangeException(nameof(imageFilterTechnique), imageFilterTechnique, null);
-			}
+
 		}
 
-		private static Bitmap BlackWhite(Bitmap originalBitmap, ImageFilter imageFilter)
+		public override Bitmap Filter(Bitmap originalBitmap)
 		{
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
 			for (var y = 0; y < originalBitmap.Height; y++)
@@ -106,17 +96,26 @@ namespace Camera_Filter
 			}
 			return editedBitmap;
 		}
+	}
 
-		private static Bitmap Pixify(Bitmap originalBitmap, ImageFilter imageFilter)
+	internal class Pixify : ImageFilter
+	{
+		public int AmountOfPixels { get; set; }
+
+		public Pixify(int amountOfPixels)
 		{
-			var amountOfPixels = imageFilter.AmountOfPixels;
+			AmountOfPixels = amountOfPixels;
+		}
+
+		public override Bitmap Filter(Bitmap originalBitmap)
+		{
 			var pixelGroups = new Dictionary<Matrix, List<Color>>();
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					var pixelGroupsIndex = new Matrix(x / amountOfPixels, y / amountOfPixels);
-					if (x % amountOfPixels == 0 && y % amountOfPixels == 0)
+					var pixelGroupsIndex = new Matrix(x / AmountOfPixels, y / AmountOfPixels);
+					if (x % AmountOfPixels == 0 && y % AmountOfPixels == 0)
 					{
 						pixelGroups.Add(pixelGroupsIndex, new List<Color>());
 					}
@@ -135,17 +134,26 @@ namespace Camera_Filter
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
 				{
-					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[new Matrix(x / amountOfPixels, y / amountOfPixels)]);
+					editedBitmap.SetPixel(x, y, pixelGroupsEvaluated[new Matrix(x / AmountOfPixels, y / AmountOfPixels)]);
 				}
 			}
 			return editedBitmap;
 		}
+	}
 
-		private static Bitmap Brightener(Bitmap originalBitmap, ImageFilter imageFilter)
+	internal class Brightener : ImageFilter
+	{
+		public double BrightnessStrength { get; set; }
+
+		public Brightener(double brightnessStrength)
 		{
-			var brightnessStrength = imageFilter.BrightnessStrength;
+			BrightnessStrength = brightnessStrength;
+		}
+
+		public override Bitmap Filter(Bitmap originalBitmap)
+		{
 			var editedBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height, originalBitmap.PixelFormat);
-			var brightenerFunction = brightnessStrength >= 0 ? (Func<byte, byte>)(channel => (byte)(channel + (byte.MaxValue - channel) * brightnessStrength)) : (channel => (byte)(channel * (1 + brightnessStrength)));
+			var brightenerFunction = BrightnessStrength >= 0 ? (Func<byte, byte>)(channel => (byte)(channel + (byte.MaxValue - channel) * BrightnessStrength)) : (channel => (byte)(channel * (1 + BrightnessStrength)));
 			for (var y = 0; y < originalBitmap.Height; y++)
 			{
 				for (var x = 0; x < originalBitmap.Width; x++)
@@ -155,57 +163,21 @@ namespace Camera_Filter
 			}
 			return editedBitmap;
 		}
-
-		private static Bitmap Custom(Bitmap orginalBitmap, ImageFilter imageFilter)
-		{
-			return imageFilter.OwnFilter(orginalBitmap);
-		}
 	}
 
-	internal class ImageFilter
+	internal class Custom : ImageFilter
 	{
-		public ImageFilterTechnique Technique { get; }
-		public int AmountOfPixels { get; private set; }
-		public float BrightnessStrength { get; private set; }
-		public Func<Bitmap, Bitmap> OwnFilter { get; private set; }
+		public Func<Bitmap, Bitmap> OwnFilter { get; set; }
 
-		private ImageFilter()
+		public Custom(Func<Bitmap, Bitmap> ownFilter)
 		{
-
+			OwnFilter = ownFilter;
 		}
 
-		private ImageFilter(ImageFilterTechnique technique)
+		public override Bitmap Filter(Bitmap originalBitmap)
 		{
-			this.Technique = technique;
+			return OwnFilter(originalBitmap);
 		}
-
-		public static ImageFilter BlackWhite()
-		{
-			return new ImageFilter(ImageFilterTechnique.BlackWhite);
-		}
-
-		public static ImageFilter Pixify(int amountOfPixels)
-		{
-			return new ImageFilter(ImageFilterTechnique.Pixify) { AmountOfPixels = amountOfPixels };
-		}
-
-		public static ImageFilter Brightener(float brightenessStength)
-		{
-			return new ImageFilter(ImageFilterTechnique.Brightener) { BrightnessStrength = brightenessStength };
-		}
-
-		public static ImageFilter Custom(Func<Bitmap, Bitmap> ownFilter)
-		{
-			return new ImageFilter(ImageFilterTechnique.Custom) { OwnFilter = ownFilter };
-		}
-	}
-
-	internal enum ImageFilterTechnique
-	{
-		BlackWhite,
-		Pixify,
-		Brightener,
-		Custom
 	}
 
 	internal static class ColorExtensions
@@ -280,17 +252,17 @@ namespace Camera_Filter
 
 		public MathColor(int a, int r, int g, int b)
 		{
-			this.A = a;
-			this.R = r;
-			this.G = g;
-			this.B = b;
+			A = a;
+			R = r;
+			G = g;
+			B = b;
 		}
 		public MathColor(int r, int g, int b)
 		{
-			this.A = byte.MaxValue;
-			this.R = r;
-			this.G = g;
-			this.B = b;
+			A = byte.MaxValue;
+			R = r;
+			G = g;
+			B = b;
 		}
 
 		public static explicit operator Color(MathColor mathColor)
@@ -311,8 +283,8 @@ namespace Camera_Filter
 
 		public Matrix(int x, int y)
 		{
-			this.X = x;
-			this.Y = y;
+			X = x;
+			Y = y;
 		}
 	}
 }
